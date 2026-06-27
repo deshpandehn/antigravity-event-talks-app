@@ -13,6 +13,8 @@ const searchInput = document.getElementById('search-input');
 const filterTabs = document.querySelectorAll('.filter-tab');
 const cacheTimeLabel = document.getElementById('cache-time-label');
 const cacheStatusDetail = document.getElementById('cache-status-detail');
+const exportCsvBtn = document.getElementById('export-csv-btn');
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
 
 // Sidebar counts
 const countTotalEl = document.getElementById('count-total');
@@ -38,6 +40,7 @@ const templateBtns = document.querySelectorAll('.template-btn');
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
     fetchReleaseNotes();
     setupEventListeners();
 });
@@ -48,6 +51,16 @@ function setupEventListeners() {
     refreshBtn.addEventListener('click', () => {
         fetchReleaseNotes(true);
     });
+
+    // Export CSV action
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', exportToCSV);
+    }
+
+    // Theme Toggle action
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', toggleTheme);
+    }
 
     // Search action
     searchInput.addEventListener('input', (e) => {
@@ -233,13 +246,19 @@ function renderFeed() {
             </div>
             
             <div class="card-footer">
-                <button class="btn btn-card-action btn-copy-link" data-id="${note.id}">
+                <button class="btn btn-card-action btn-copy-text" data-id="${note.id}" title="Copy release note text to clipboard">
                     <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: currentColor;">
                         <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
                     </svg>
+                    Copy Text
+                </button>
+                <button class="btn btn-card-action btn-copy-link" data-id="${note.id}" title="Copy official Google Cloud release link to clipboard">
+                    <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: currentColor;">
+                        <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+                    </svg>
                     Copy Link
                 </button>
-                <button class="btn btn-primary btn-card-action btn-tweet-trigger" data-id="${note.id}">
+                <button class="btn btn-primary btn-card-action btn-tweet-trigger" data-id="${note.id}" title="Compose a Tweet about this release note">
                     <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: currentColor;">
                         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
                     </svg>
@@ -257,6 +276,21 @@ function renderFeed() {
 
 // Wire card specific buttons
 function setupCardActions() {
+    // Copy text handler
+    document.querySelectorAll('.btn-copy-text').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const noteId = btn.getAttribute('data-id');
+            const note = releaseNotes.find(n => n.id === noteId);
+            if (note && note.text) {
+                navigator.clipboard.writeText(note.text)
+                    .then(() => showToast('Release note text copied to clipboard!', 'success'))
+                    .catch(() => showToast('Failed to copy text.', 'error'));
+            } else {
+                showToast('Text unavailable.', 'error');
+            }
+        });
+    });
+
     // Copy link handler
     document.querySelectorAll('.btn-copy-link').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -534,3 +568,70 @@ window.clearFilters = function() {
     const allTab = document.querySelector('.filter-tab[data-type="all"]');
     if (allTab) allTab.click();
 };
+
+// Export currently filtered release notes to a CSV file
+function exportToCSV() {
+    if (filteredNotes.length === 0) {
+        showToast('No notes available to export.', 'error');
+        return;
+    }
+    
+    // CSV Header row
+    let csvContent = "Date,Type,Content,Link\n";
+    
+    // Populate data rows (with double quote escaping)
+    filteredNotes.forEach(note => {
+        const date = `"${note.date.replace(/"/g, '""')}"`;
+        const type = `"${note.type.replace(/"/g, '""')}"`;
+        const text = `"${note.text.replace(/"/g, '""')}"`;
+        const link = `"${note.link.replace(/"/g, '""')}"`;
+        csvContent += `${date},${type},${text},${link}\n`;
+    });
+    
+    // Create download link and trigger download
+    try {
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `bigquery_release_notes_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Exported CSV successfully!', 'success');
+    } catch (e) {
+        console.error("CSV Export error: ", e);
+        showToast('Failed to export CSV.', 'error');
+    }
+}
+
+// Light / Dark Theme Management
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+        updateThemeIcon(true);
+    } else {
+        document.body.classList.remove('light-theme');
+        updateThemeIcon(false);
+    }
+}
+
+function toggleTheme() {
+    const isLight = document.body.classList.toggle('light-theme');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    updateThemeIcon(isLight);
+    showToast(`Switched to ${isLight ? 'Light' : 'Dark'} mode!`, 'info');
+}
+
+function updateThemeIcon(isLight) {
+    const icon = document.getElementById('theme-icon');
+    if (!icon) return;
+    if (isLight) {
+        // Sun Icon representation
+        icon.innerHTML = `<path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0s-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0s-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41l-1.06-1.06zm1.06-12.37c-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.38.39-1.02 0-1.41zm-12.37 12.37c-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06c.39-.38.39-1.02 0-1.41z"/>`;
+    } else {
+        // Moon Icon representation
+        icon.innerHTML = `<path d="M12.3 22h-.1c-5.4 0-9.8-4.4-9.8-9.8 0-4.8 3.5-9 8.3-9.7.7-.1 1.3.4 1.4 1.1.1.7-.4 1.3-1.1 1.4-3.4.5-5.8 3.4-5.8 6.8 0 3.9 3.1 7 7 7 3.4 0 6.3-2.4 6.8-5.8.1-.7.7-1.2 1.4-1.1.7.1 1.2.7 1.1 1.4-.7 4.8-4.9 8.3-9.7 8.3z"/>`;
+    }
+}
